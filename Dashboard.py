@@ -156,6 +156,41 @@ class OutputPlotGenerator:
                  'region': 'category',
                  'value': 'float64'})
 
+
+        elif (type == 'inputs'):
+            cur.execute(
+                "SELECT regions, tech, vintage, cost_invest, cost_invest_units, source, cost_invest_notes FROM CostInvest")
+            self.cost_invest = cur.fetchall()
+            self.cost_invest = [list(elem) for elem in self.cost_invest]
+            self.cost_invest = pd.DataFrame(self.cost_invest, columns=[
+                                                 'region', 'tech', 't_periods', 'value', 'unit', 'source', 'note'])
+            self.cost_invest = self.cost_invest.astype(
+                {'region': 'category',
+                 'tech': 'category',
+                 't_periods': 'int',
+                 'value': 'float64',
+                 'unit': 'category',
+                 'source': 'category',
+                 'note': 'category'})
+
+
+            cur.execute(
+                "SELECT regions, input_comm, tech, vintage, output_comm, efficiency, source, eff_notes FROM Efficiency")
+            self.efficiency = cur.fetchall()
+            self.efficiency = [list(elem) for elem in self.efficiency]
+            self.efficiency = pd.DataFrame(self.efficiency, columns=[
+                                                 'region', 'input_comm', 'tech', 't_periods', 'output_comm', 'value', 'source', 'note'])
+            self.efficiency = self.efficiency.astype(
+                {'region': 'category',
+                'input_comm': 'category',
+                 'tech': 'category',
+                 't_periods': 'int',
+                 'output_comm': 'category',
+                 'value': 'float64',
+                 'source': 'category',
+                 'note': 'category'})
+
+
         elif (type == 'flow-in'):
             cur.execute("SELECT scenario, sector, regions, t_periods, t_season, t_day, input_comm, tech, output_comm, SUM(vflow_in) FROM Output_VFlow_In GROUP BY scenario, sector, regions, t_periods, t_season, t_day, input_comm, tech, output_comm")
             self.flow_input = cur.fetchall()
@@ -247,6 +282,8 @@ class OutputPlotGenerator:
         self.tech_info = self.tech_info.astype({'tech': 'string', 'tech_category': 'string',
                                                 'description': 'string', 'units': 'string', 'color': 'string', 'plot_order': 'string'})
         self.tech_info.plot_order = pd.to_numeric(self.tech_info.plot_order, errors='coerce')
+
+
         # We want to convert the plot_order to numeric type. We first must deal with empty strings and the like
 
         cur.execute("SELECT sector, description, color, plot_order FROM sector_labels")
@@ -375,6 +412,43 @@ class OutputPlotGenerator:
             # Make sure the data is presented in the proper plot_order
             outputData = outputData.sort_values(by=['sector_order', 't_periods'])
             outputData = outputData.reset_index(drop=True)
+
+        elif datatype == 'cost_invest':
+            outputData = copy.copy(inputData)
+            outputData = outputData.sort_values(by=['t_periods'])
+            outputData['sector'] = ''
+            outputData['subsector'] = ''
+            for sec in self.tech_info.sector.unique():
+                techs = self.tech_info[self.tech_info.sector == sec].tech.values
+                outputData.loc[outputData.tech.isin(techs), 'sector'] = sec
+
+            for subsec in self.tech_info.subsector.unique():
+                techs = self.tech_info[self.tech_info.subsector == subsec].tech.values
+                outputData.loc[outputData.tech.isin(techs), 'subsector'] = subsec
+
+            outputData = outputData.sort_values(by=['tech', 't_periods'])
+
+        elif datatype == 'efficiency':
+            outputData = copy.copy(inputData)
+            outputData = outputData.sort_values(by=['t_periods'])
+            outputData['sector'] = ''
+            outputData['subsector'] = ''
+            for sec in self.tech_info.sector.unique():
+                techs = self.tech_info[self.tech_info.sector == sec].tech.values
+                outputData.loc[outputData.tech.isin(techs), 'sector'] = sec
+
+            for subsec in self.tech_info.subsector.unique():
+                techs = self.tech_info[self.tech_info.subsector == subsec].tech.values
+                outputData.loc[outputData.tech.isin(techs), 'subsector'] = subsec
+
+            outputData['unit'] = ''
+            for (idx, row) in outputData.iterrows():
+                unit = self.commodity_info[self.commodity_info.name == row.output_comm].units.values[0] + \
+                '\\' + self.commodity_info[self.commodity_info.name == row.input_comm].units.values[0]
+                outputData.loc[idx, 'unit'] = unit
+
+            outputData['output_comm'].astype(str) + '/' + outputData['input_comm'].astype(str)
+            outputData = outputData.sort_values(by=['tech', 't_periods'])
 
         elif datatype == 'energy-flow':
             outputData = copy.copy(self.flow_output)
@@ -508,6 +582,23 @@ class OutputPlotGenerator:
         df_em = self.processData(self.emissions_output,  'emissions')
 
         self.makeEmissionsDashboard(df_em)
+
+        return
+
+    def generatePlotForInputs(self):
+        '''
+        Generates Plot for Capital Cost and Efficiency Input Data
+        '''
+        self.extractFromDatabase(type='inputs')
+
+        self.processData(None, 'sectors')
+
+        df_cc = self.processData(self.cost_invest, 'cost_invest')
+        df_ef = self.processData(self.efficiency, 'efficiency')
+
+
+
+        self.makeInputDashboard(df_cc, df_ef)
 
         return
 
@@ -984,6 +1075,181 @@ class OutputPlotGenerator:
             return fig
         app.run_server(debug=True)
 
+
+
+
+
+    def makeInputDashboard(self, df_cc, df_ef):
+        '''
+        Creates the structure of the emissions dashboard
+        '''
+        regions = df_ef.region.unique()
+        sectors = df_ef.sector.unique()
+        subsectors = df_ef.subsector.unique()
+        years = df_ef.t_periods.unique()
+        techs = df_ef.tech.unique()
+
+
+        tech_options = {}
+        for s in sectors:
+            tech_options[s] = {}
+            for ss in df_ef[df_ef.sector == s].subsector.unique():
+                tech_options[s][ss] = list(df_ef[(df_ef.sector == s) & (
+                    df_ef.subsector == ss)].tech.unique())
+
+        external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
+        app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
+
+        app.layout = html.Div([
+            html.Div([
+
+                html.Div([
+                    html.Label('Region:'),
+                    dcc.Dropdown(
+                        id='region-selector',
+                        options=[{'label': i, 'value': i} for i in regions],
+                        value=[r for r in regions if '-' not in r][0],
+                        multi=False
+                    ),
+                    html.Label('Technologies:'),
+                    dcc.Dropdown(
+                        id='technology-selector', multi=True),
+
+                    dcc.RadioItems(
+                        id='costinvest-or-efficiency',
+                        options=[{'label': i, 'value': i} for i in ['Capital Cost', 'Efficiency']],
+                        value='Capital Cost',
+                        labelStyle={'display': 'inline-block'}
+                    )
+                ],
+                    style={'width': '48%', 'display': 'inline-block'}),
+
+                html.Div([
+                    html.Label('Sector:'),
+                    dcc.Dropdown(
+                        id='sector-selector',
+                        options=[{'label': i.capitalize(), 'value': i} for i in sectors],
+                        value=sectors[0]
+                    ),
+                    html.Label('Subsector(s):'),
+                    dcc.Dropdown(
+                        id='subsector-selector', multi=True),
+
+
+                ],
+                    style={'width': '48%', 'float': 'right', 'display': 'inline-block'})
+            ],
+                style={'padding': 60}
+            ),
+
+            dcc.Graph(id='indicator-graphic'),
+            html.Div(id='output-string', style={'padding': 60})
+        ])
+
+        @app.callback(
+            Output('subsector-selector', 'options'),
+            Input('sector-selector', 'value'))
+        def set_subsector_options(selected_sector):
+            _options = []
+            for opt in self.sectorMaps[selected_sector]:
+                if opt not in _options:
+                    _options.append(opt)
+            return [{'label': i, 'value': i} for i in _options]
+
+        @app.callback(
+            Output('subsector-selector', 'value'),
+            Input('subsector-selector', 'options'))
+        def set_subsector_value(ss_options):
+            return [ss_options[0]['value']]
+
+        @app.callback(
+            Output('technology-selector', 'options'),
+            Input('sector-selector', 'value'),
+            Input('subsector-selector', 'value'))
+        def set_technology_options(sector, selected_subsectors):
+            _options = []
+            for ss in selected_subsectors:
+                if ss in tech_options[sector]:
+                    for opt in tech_options[sector][ss]:
+                        if opt not in _options:
+                            _options.append(opt)
+            return [{'label': i, 'value': i} for i in _options]
+
+        @app.callback(
+            Output('technology-selector', 'value'),
+            Input('technology-selector', 'options'))
+        def set_technology_value(tech_options):
+            return [tech_options[0]['value']]
+
+        @app.callback(
+            [Output('indicator-graphic', 'figure'),
+            Output('output-string', 'children')],
+            [Input('sector-selector', 'value'),
+            Input('subsector-selector', 'value'),
+            Input('region-selector', 'value'),
+            Input('technology-selector', 'value'),
+            Input('costinvest-or-efficiency', 'value')])
+        def update_graph(sector, subsector, region, technology, table):
+            notes = []
+
+            if table == 'Capital Cost':
+                dff =  df_cc[(df_cc['sector'] == sector) &
+                             (df_cc['subsector'].isin(subsector)) &
+                             (df_cc['region'] == region) &
+                             (df_cc['tech'].isin(technology))]
+                years = df_cc.t_periods.unique()
+                units = dff.unit.unique()
+
+                if len(units) > 1:
+                    notes.append('Warning: Attempting to plot technologies with different units: ' + ', '.join(units))
+                    unit = 'Error: Multiple Units'
+                elif len(units) == 1:
+                    unit = list(units)[0]
+                else:
+                    unit = 'Not Specified'
+
+                yaxis_label = 'Capital Cost ' + '[' + str(unit) + ']'
+                title = 'Technology Capital Costs'
+
+
+            elif table == 'Efficiency':
+
+                dff = df_ef[(df_ef['sector'] == sector) &
+                            (df_ef['subsector'].isin(subsector)) &
+                            (df_ef['region'] == region) &
+                            (df_ef['tech'].isin(technology))]
+
+                years = df_ef.t_periods.unique()
+                units = dff.unit.unique()
+
+                if len(units) > 1:
+                    notes.append('Warning: Attempting to plot technologies with different units: ' + ', '.join(units))
+                    unit = 'Error: Multiple Units'
+                unit = list(units)[0]
+
+                yaxis_label = 'Efficiency ' + '[' + str(unit) + ']'
+                title = 'Technology Efficiency (Annual Average)'
+
+            fig = self.line_plot(dff, yaxis_label, title, unit)
+
+            fig.update_layout(margin={'l': 40, 'b': 40, 't': 40, 'r': 0},
+                              hovermode='x unified',
+                              xaxis=dict(
+                tickmode='array',
+                tickvals=years,
+                ticktext=years
+            ))
+
+            return fig, '\n'.join(notes)
+        app.run_server(debug=True)
+
+
+
+
+
+
+
+
     def stacked_bar_plot(self, data, years, ylabel, title, unit, column_to_stack, stack_descriptor, super_categories=False):
         '''
         Returns a stacked bar plot.
@@ -1294,13 +1560,69 @@ class OutputPlotGenerator:
         return fig
 
 
+    def line_plot(self, dff, yaxis_label, title, unit):
+        '''
+        Returns a line plot.
+        x-axis: Years
+        y-axis: Capital Costs or Efficiencies (user input)
+        '''
+
+        fig = go.Figure()
+
+        # determine the plot order. We would like to plot
+        # technologies with higher values first so that
+        # the legend order roughly corresponds to the line
+        # order.
+        # We will also create default colours for the technologies. These will be used
+        # if no color is listed in the technologies table or if different
+        # technologies have the same color listed in the table.
+        techs = dff.tech.unique()
+        tech_to_avg = {}
+        tech_to_default_color = {}
+        for tech in techs:
+            tech_to_avg[tech] = dff[dff.tech == tech].value.mean()
+        tech_to_avg = dict(sorted(tech_to_avg.items(), key=lambda item: item[1]))
+
+        colors = []
+        markers = ['circle-open', 'circle', 'circle-open-dot', 'square']
+
+        for tech in tech_to_avg.keys():
+            _df = dff[dff.tech == tech]
+            color = self.tech_info[self.tech_info.tech == tech].color.values[0]
+
+            label = self.tech_info[self.tech_info.tech == tech].description.values[0]
+            if matplotlib.colors.is_color_like(color):
+                fig.add_trace(go.Scatter(x=_df.t_periods, y=_df.value, name=label,
+                         marker=dict(size = 8, symbol = colors.count(color), line=dict(width=1,
+                                        color='DarkSlateGrey')),
+                         line = dict(color=color, width=2, dash='dot'),
+                         text=[label +
+                               ': '+str(round(_, 2))+' ' + unit for _ in _df.value],
+                         hoverinfo='text'))
+            else:
+                fig.add_trace(go.Scatter(x=_df.t_periods, y=_df.value, name=label,
+                         marker=dict(size = 8, symbol = colors.count(color), line=dict(width=1,
+                                        color='DarkSlateGrey')),
+                         line = dict(width=2, dash='dot'),
+                         text=[label +
+                               ': '+str(round(_, 2))+' ' + unit for _ in _df.value],
+                         hoverinfo='text'))
+            colors.append(color)
+
+        fig.update_layout(title=title,
+                          yaxis_title=yaxis_label,
+                          xaxis_title='Year',
+                          legend={'traceorder': 'reversed'},
+                          plot_bgcolor='rgb(242, 244, 247)')
+        return fig
+
 # Function used for command line purposes. Parses arguments and then calls relevent functions.
 def GeneratePlot(args):
     parser = argparse.ArgumentParser(description="Generate Output Plot")
     parser.add_argument('-i', '--input', action="store", dest="input",
                         help="Input Database Filename <path>", required=True)
     parser.add_argument('-p', '--plot-type', action="store", dest="type",
-                        help="Type of Plot to be generated", choices=['capacity', 'flow', 'emissions'], required=True)
+                        help="Type of Plot to be generated", choices=['capacity', 'flow', 'emissions', 'inputs'], required=True)
     parser.add_argument('--super', action="store_true", dest="super_categories",
                         help="Merge Technologies or not", default=False)
 
@@ -1314,7 +1636,8 @@ def GeneratePlot(args):
         error = result.generatePlotForEnergyFlow(options.super_categories)
     elif (options.type == 'emissions'):
         error = result.generatePlotForEmissions()
-
+    elif (options.type == 'inputs'):
+        error = result.generatePlotForInputs()
 
 begin = time.time()
 def duration(): return time.time() - begin
