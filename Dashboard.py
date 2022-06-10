@@ -968,7 +968,7 @@ class OutputPlotGenerator:
                     title += 'and ' + region[-1]
 
             fig = self.stacked_line_plot(_dff, _dfb, yaxis_label, title,
-                                         techs, unit, super_categories)
+                                         techs, region, unit, super_categories)
 
             fig.update_layout(margin={'l': 40, 'b': 40, 't': 40, 'r': 0},
                               hovermode='x unified')
@@ -1316,7 +1316,7 @@ class OutputPlotGenerator:
                           selector=dict(mode='markers'))
         return fig
 
-    def stacked_line_plot(self, d_gen, d_tx, ylabel, title, techs, unit, super_categories):
+    def stacked_line_plot(self, d_gen, d_tx, ylabel, title, techs, regions, unit, super_categories):
         def individual_plot(_d_gen, _d_tx, sf):
 
             annual_to_date_modifier = 1/(sf.value.values[0] * 365 * 24)
@@ -1393,7 +1393,7 @@ class OutputPlotGenerator:
 
             # Imports
             for r2 in _d_tx.R2.unique():
-                if r2 not in _d_gen.region.unique():
+                if r2 not in regions:
                     continue
                 _d = _d_tx[_d_tx.R2 == r2]
                 _d = _d.drop(columns=['scenario', 'sector', 'region', 't_periods', 'date', 'hour',
@@ -1436,7 +1436,7 @@ class OutputPlotGenerator:
             # Convert 'base' to a Series
             base2 = base2.value
             for r1 in _d_tx.R1.unique():
-                if r1 not in _d_gen.region.unique():
+                if r1 not in regions:
                     continue
                 _d = _d_tx[_d_tx.R1 == r1]
                 _d = _d.drop(columns=['scenario', 'sector', 'region', 't_periods', 'date', 'hour',
