@@ -9,6 +9,10 @@ for the energy system planning model, based off [Temoa](https://temoacloud.com/)
 - The [ACES-Data](https://github.com/SutubraResearch/ACES-Data) repository contains the data files
 associated with the ACES Model.
 
+The dashboard is still in a beta version. Feel free to flag [issues](https://github.com/SutubraResearch/ACES-Dashboard/issues) and we'll 
+do our best to make improvements and patches.
+Otherwise, please feel free to get in touch @ cameron@sutubra.ca.
+
 # Usage
 
 ## Getting the dashboard up-and-running
