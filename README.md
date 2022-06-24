@@ -16,7 +16,7 @@ To use the dashboard, you will first need to activate the ACES environment, whic
 would have installed from the [ACES-Temoa](https://github.com/SutubraResearch/ACES-Temoa) repository.
 
 To fire up the dashboard on your machine, use the following command in a terminal / command prompt:
-<pre><code>python Dashboard.py -i <input filename> -p <plot type> [--super]
+<pre><code>python Dashboard.py -i &ltinput filename&gt -p &ltplot type&gt [--super]
 </code></pre>
 
 where 
