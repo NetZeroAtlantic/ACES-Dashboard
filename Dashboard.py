@@ -137,8 +137,7 @@ class OutputPlotGenerator:
 
                 self.flow_output.at[idx.index.values[0], 'curtailment'] = row.curtailment
 
-            self.flow_output['value'] = self.flow_output['vflow_out'] + \
-                self.flow_output['curtailment']
+            self.flow_output['value'] = self.flow_output['vflow_out'] # + self.flow_output['curtailment']
             self.ndays = len(self.flow_output.date.unique())
 
         elif (type == 'emissions'):
@@ -1323,7 +1322,11 @@ class OutputPlotGenerator:
 
             fig_data = []
 
-            base = pd.DataFrame({'timestamp': _d_gen.timestamp.unique()}).set_index('timestamp')
+            if base_tx.shape[0] >= base_gen.shape[0]:
+                base = base_tx
+            else:
+                base = base_gen
+
             base['value'] = 0
             # Convert 'base' to a Series
             base = base.value
@@ -1406,9 +1409,15 @@ class OutputPlotGenerator:
                                                    'R1': 'first',
                                                    'R2': 'first'})
 
-                vals = pd.DataFrame({'timestamp': _d_gen.timestamp.unique()}).set_index('timestamp')
+                base_tx = pd.DataFrame({'timestamp': _d_tx.timestamp.unique()}).set_index('timestamp')
+                base_gen = pd.DataFrame({'timestamp': _d_gen.timestamp.unique()}).set_index('timestamp')
+                if base_tx.shape[0] >= base_gen.shape[0]:
+                    vals = base_tx
+                else:
+                    vals = base_gen
                 vals['value'] = 0
                 vals2 = _d.value
+
                 vals = pd.concat([vals, vals2], axis=1).fillna(0).sum(axis=1)
                 vals = vals * annual_to_date_modifier
 
